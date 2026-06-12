@@ -5,14 +5,56 @@ const Submissions=require("../schemas/Submission");
 const { stripTypeScriptTypes } = require("node:module");
 const router=express.Router();
 const jwt=require("jsonwebtoken");
+const env=require('../config/env');
 
-//this contains the user dashbooard routes....
+//this contains the user dashbooard routes....and safe login
+router.post('/login',async(req,res)=>{
+    try{
+        const {Email,Password}=req.body;
+        if(!Email || !Password){
+            return res.status(400).json("endter your credentials please!");
+        }
+        const userData=await Users.findOne({Email}).select('+Password');
+        if(!userData){
+            return res.status(400).json({message:"Email is wrong!"});
+        }
+        //compare password
+        const result=await userData.comparePassword(Password);
+        if(!result){
+            return res.status(400).json({message:"Password is incorrect"});
+        }
+        const token=jwt.sign(
+            {
+                id:userData.id,
+            },
+            env.JWT_SECRET,
+            {
+                expiresIn:"7d",
+            }
+        )
+        return res.status(200).json({
+            message:"Login successful",
+            token,
+            user:{
+                id: userData._id,
+                Username: userData.Username,
+                Email: userData.Email,
+                Role: userData.Role
+            }
+        });
+    }   
+    catch(err){
+        const errMessages="Error logging in"+err.message;
+        console.log(errMessages);
+        return res.status(500).json({error:errMessages});        
+    }
+});
 //fetch the profile
 router.get('/profile/:id',async(req,res)=>{
     try{
         const userid=req.params.id;
         if(!userid){
-            return res.status(200).json({message:"invalid id"});
+            return res.status(400).json({message:"invalid id"});
         }
         const profile=await Users.findById(userid).select('-Password');
         return res.status(200).json(profile);

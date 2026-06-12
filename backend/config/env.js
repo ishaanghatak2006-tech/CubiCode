@@ -2,7 +2,7 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
-const requiredEnvVars = ["MONGO_URI"];
+const requiredEnvVars = ["MONGO_URI", "BACKEND_TOKEN"];
 const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
 
 if (missingEnvVars.length > 0) {
@@ -15,6 +15,7 @@ const env = {
   MONGO_URI: process.env.MONGO_URI,
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
   JWT_SECRET: process.env.JWT_SECRET,
+  BACKEND_TOKEN: process.env.BACKEND_TOKEN,
 };
 
 module.exports = env;

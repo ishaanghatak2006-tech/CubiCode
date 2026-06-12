@@ -2,7 +2,6 @@ const express=require('express');
 const mongoose=require('mongoose');
 const Users=require('../schemas/User');
 const Question=require('../schemas/Question')
-const { listen } = require('node:quic');
 const router=express.Router();
 
 //make a trie structure
