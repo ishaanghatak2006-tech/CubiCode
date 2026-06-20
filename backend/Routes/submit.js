@@ -155,13 +155,82 @@ function normalizeType(type) {
   return String(type ?? "").replace(/\s+/g, "");
 }
 
+function stripConstQualifier(type) {
+  return normalizeType(type).replace(/^const/, "");
+}
+
+function stripReferenceQualifier(type) {
+  return stripConstQualifier(type).replace(/[&]+$/g, "");
+}
+
 function isVectorType(type) {
-  return normalizeType(type).startsWith("vector<") && normalizeType(type).endsWith(">");
+  const normalizedType = stripReferenceQualifier(type);
+  return normalizedType.startsWith("vector<") && normalizedType.endsWith(">");
 }
 
 function getVectorInnerType(type) {
-  const normalized = normalizeType(type);
+  const normalized = stripReferenceQualifier(type);
   return normalized.slice("vector<".length, -1);
+}
+
+function isStringType(type) {
+  return stripReferenceQualifier(type) === "string";
+}
+
+function isCharType(type) {
+  return stripReferenceQualifier(type) === "char";
+}
+
+function isBoolType(type) {
+  return stripReferenceQualifier(type) === "bool";
+}
+
+function isNumericType(type) {
+  return [
+    "int",
+    "long",
+    "longint",
+    "longlong",
+    "longlongint",
+    "float",
+    "double",
+    "short",
+  ].includes(stripReferenceQualifier(type));
+}
+
+function isSupportedScalarType(type) {
+  return (
+    isNumericType(type) ||
+    isStringType(type) ||
+    isCharType(type) ||
+    isBoolType(type)
+  );
+}
+
+function validateSupportedType(type) {
+  const normalizedType = normalizeType(type);
+
+  if (normalizedType.includes("*")) {
+    throw new Error(`Unsupported parameter type "${type}". Pointer types are not supported`);
+  }
+
+  if (normalizedType.endsWith("&") && !normalizedType.startsWith("const")) {
+    throw new Error(`Unsupported parameter type "${type}". Use plain value types in question parameters`);
+  }
+
+  if (isVectorType(type)) {
+    const innerType = getVectorInnerType(type);
+    if (!isSupportedScalarType(innerType)) {
+      throw new Error(`Unsupported parameter type "${type}". Only vector of scalar types is supported`);
+    }
+    return;
+  }
+
+  if (!isSupportedScalarType(type)) {
+    throw new Error(
+      `Unsupported parameter type "${type}". Supported types are int, long long, double, bool, char, string, and vector<scalar>`
+    );
+  }
 }
 
 function parseArrayLiteral(rawValue) {
@@ -191,22 +260,23 @@ function stripOuterQuotes(value) {
 }
 
 function serializeParameterInput(type, rawValue) {
-  const normalizedType = normalizeType(type);
+  validateSupportedType(type);
+  const normalizedType = stripReferenceQualifier(type);
 
   if (isVectorType(normalizedType)) {
     const values = parseArrayLiteral(rawValue);
     return `${values.length}\n${values.map((value) => stripOuterQuotes(value)).join(" ")}`;
   }
 
-  if (normalizedType === "string") {
+  if (isStringType(normalizedType)) {
     return stripOuterQuotes(rawValue);
   }
 
-  if (normalizedType === "char") {
+  if (isCharType(normalizedType)) {
     return stripOuterQuotes(rawValue);
   }
 
-  if (normalizedType === "bool") {
+  if (isBoolType(normalizedType)) {
     const value = stripOuterQuotes(rawValue).toLowerCase();
     return value === "true" ? "true" : "false";
   }
@@ -332,6 +402,7 @@ async function runpLocalHostJudge(lang, code, testcases) {
 }
 
 function generateCppReadExpression(type) {
+  validateSupportedType(type);
   const normalizedType = normalizeType(type);
 
   if (isVectorType(normalizedType)) {
@@ -339,26 +410,76 @@ function generateCppReadExpression(type) {
     return `readVector<${innerType}>()`;
   }
 
-  if (normalizedType === "string") {
+  if (isStringType(normalizedType)) {
     return "readString()";
   }
 
-  if (normalizedType === "char") {
+  if (isCharType(normalizedType)) {
     return "readChar()";
   }
 
-  if (normalizedType === "bool") {
+  if (isBoolType(normalizedType)) {
     return "readBool()";
   }
 
   return `readScalar<${type}>()`;
 }
 
-function generateWrappedCode(lang, userCode, question) {
-  if (lang !== "cpp") {
-    return userCode;
+function getPythonScalarReader(type) {
+  validateSupportedType(type);
+
+  if (isStringType(type)) {
+    return "read_string()";
   }
 
+  if (isCharType(type)) {
+    return "read_char()";
+  }
+
+  if (isBoolType(type)) {
+    return "read_bool()";
+  }
+
+  if (["float", "double"].includes(stripReferenceQualifier(type))) {
+    return "read_float()";
+  }
+
+  return "read_int()";
+}
+
+function generatePythonReadExpression(type) {
+  validateSupportedType(type);
+
+  if (isVectorType(type)) {
+    return `read_vector(${JSON.stringify(getVectorInnerType(type))})`;
+  }
+
+  return getPythonScalarReader(type);
+}
+
+function generateJavaScriptReadExpression(type) {
+  validateSupportedType(type);
+
+  if (isVectorType(type)) {
+    return `readVector(${JSON.stringify(getVectorInnerType(type))})`;
+  }
+
+  if (isStringType(type)) {
+    return "readString()";
+  }
+
+  if (isCharType(type)) {
+    return "readChar()";
+  }
+
+  if (isBoolType(type)) {
+    return "readBool()";
+  }
+
+  return "readNumber()";
+}
+
+function generateWrappedCode(lang, userCode, question) {
   const functionName = String(question?.Funtion_name ?? "").trim();
   const className = String(question?.Class_name ?? "Solution").trim() || "Solution";
   const returnType = String(question?.Return_type ?? "").trim();
@@ -368,27 +489,32 @@ function generateWrappedCode(lang, userCode, question) {
     return userCode;
   }
 
-  const declarations = parameters
-    .map((parameter) => {
-      const type = String(parameter?.type ?? "").trim();
-      const name = String(parameter?.name ?? "").trim();
-      return `    ${type} ${name} = ${generateCppReadExpression(type)};`;
-    })
-    .join("\n");
+  for (const parameter of parameters) {
+    validateSupportedType(parameter?.type ?? "");
+  }
 
-  const argumentList = parameters
-    .map((parameter) => String(parameter?.name ?? "").trim())
-    .join(", ");
+  if (lang === "cpp") {
+    const declarations = parameters
+      .map((parameter) => {
+        const type = String(parameter?.type ?? "").trim();
+        const name = String(parameter?.name ?? "").trim();
+        return `    ${type} ${name} = ${generateCppReadExpression(type)};`;
+      })
+      .join("\n");
 
-  const invocation =
-    normalizeType(returnType) === "void"
-      ? `    solution.${functionName}(${argumentList});`
-      : [
-          `    auto result = solution.${functionName}(${argumentList});`,
-          "    cout << cubiToString(result);",
-        ].join("\n");
+    const argumentList = parameters
+      .map((parameter) => String(parameter?.name ?? "").trim())
+      .join(", ");
 
-  return `#include <bits/stdc++.h>
+    const invocation =
+      normalizeType(returnType) === "void"
+        ? `    solution.${functionName}(${argumentList});`
+        : [
+            `    auto result = solution.${functionName}(${argumentList});`,
+            "    cout << cubiToString(result);",
+          ].join("\n");
+
+    return `#include <bits/stdc++.h>
 using namespace std;
 
 template <typename T>
@@ -473,6 +599,180 @@ ${invocation}
     return 0;
 }
 `;
+  }
+
+  if (lang === "python") {
+    const declarations = parameters
+      .map((parameter) => {
+        const name = String(parameter?.name ?? "").trim();
+        const type = String(parameter?.type ?? "").trim();
+        return `${name} = ${generatePythonReadExpression(type)}`;
+      })
+      .join("\n");
+
+    const argumentList = parameters
+      .map((parameter) => String(parameter?.name ?? "").trim())
+      .join(", ");
+
+    const invocation =
+      normalizeType(returnType) === "void"
+        ? `solution.${functionName}(${argumentList})`
+        : [
+            `result = solution.${functionName}(${argumentList})`,
+            "sys.stdout.write(cubi_to_string(result))",
+          ].join("\n");
+
+    return `import sys
+
+lines = sys.stdin.read().splitlines()
+line_index = 0
+
+def next_line():
+    global line_index
+    if line_index >= len(lines):
+        return ""
+    value = lines[line_index]
+    line_index += 1
+    return value
+
+def read_int():
+    return int(next_line().strip())
+
+def read_float():
+    return float(next_line().strip())
+
+def read_string():
+    return next_line()
+
+def read_char():
+    value = next_line()
+    return value[0] if value else ""
+
+def read_bool():
+    value = next_line().strip().lower()
+    return value in ("true", "1")
+
+def parse_scalar(type_name, token):
+    if type_name in ("float", "double"):
+        return float(token)
+    if type_name == "bool":
+        return token.lower() in ("true", "1")
+    if type_name == "char":
+        return token[0] if token else ""
+    if type_name == "string":
+        return token
+    return int(token)
+
+def read_vector(inner_type):
+    size = int(next_line().strip())
+    tokens = next_line().strip().split() if size > 0 else []
+    return [parse_scalar(inner_type, token) for token in tokens[:size]]
+
+def cubi_to_string(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "[" + ",".join(cubi_to_string(item) for item in value) + "]"
+    return str(value)
+
+${userCode}
+
+solution = ${className}()
+${declarations}
+${invocation}
+`;
+  }
+
+  if (lang === "javascript") {
+    const declarations = parameters
+      .map((parameter) => {
+        const name = String(parameter?.name ?? "").trim();
+        const type = String(parameter?.type ?? "").trim();
+        return `const ${name} = ${generateJavaScriptReadExpression(type)};`;
+      })
+      .join("\n");
+
+    const argumentList = parameters
+      .map((parameter) => String(parameter?.name ?? "").trim())
+      .join(", ");
+
+    const invocation =
+      normalizeType(returnType) === "void"
+        ? `solution.${functionName}(${argumentList});`
+        : [
+            `const result = solution.${functionName}(${argumentList});`,
+            "process.stdout.write(cubiToString(result));",
+          ].join("\n");
+
+    return `const fs = require("fs");
+const lines = fs.readFileSync(0, "utf8").split(/\\r?\\n/);
+let lineIndex = 0;
+
+function nextLine() {
+  if (lineIndex >= lines.length) {
+    return "";
+  }
+  const value = lines[lineIndex];
+  lineIndex += 1;
+  return value;
+}
+
+function readNumber() {
+  return Number(nextLine().trim());
+}
+
+function readString() {
+  return nextLine();
+}
+
+function readChar() {
+  const value = nextLine();
+  return value ? value[0] : "";
+}
+
+function readBool() {
+  const value = nextLine().trim().toLowerCase();
+  return value === "true" || value === "1";
+}
+
+function parseScalar(typeName, token) {
+  if (typeName === "bool") {
+    return token.toLowerCase() === "true" || token === "1";
+  }
+  if (typeName === "char") {
+    return token ? token[0] : "";
+  }
+  if (typeName === "string") {
+    return token;
+  }
+  return Number(token);
+}
+
+function readVector(innerType) {
+  const size = Number(nextLine().trim());
+  const tokens = size > 0 ? nextLine().trim().split(/\\s+/) : [];
+  return tokens.slice(0, size).map((token) => parseScalar(innerType, token));
+}
+
+function cubiToString(value) {
+  if (Array.isArray(value)) {
+    return "[" + value.map((item) => cubiToString(item)).join(",") + "]";
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  return String(value);
+}
+
+${userCode}
+
+const solution = new ${className}();
+${declarations}
+${invocation}
+`;
+  }
+
+  return userCode;
 }
 
 function normalizeOutput(value) {

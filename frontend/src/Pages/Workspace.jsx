@@ -26,6 +26,39 @@ public:
 };`;
 }
 
+function buildPythonTemplate(question) {
+    const functionName = question?.Funtion_name || "solve";
+    const parameters = Array.isArray(question?.Parameters)
+        ? question.Parameters
+        : [];
+
+    const parameterList = parameters.length
+        ? parameters.map((parameter) => parameter.name).join(", ")
+        : "";
+
+    return `class Solution:
+    def ${functionName}(self${parameterList ? `, ${parameterList}` : ""}):
+        pass`;
+}
+
+function buildJavascriptTemplate(question) {
+    const className = question?.Class_name || "Solution";
+    const functionName = question?.Funtion_name || "solve";
+    const parameters = Array.isArray(question?.Parameters)
+        ? question.Parameters
+        : [];
+
+    const parameterList = parameters.length
+        ? parameters.map((parameter) => parameter.name).join(", ")
+        : "";
+
+    return `class ${className} {
+    ${functionName}(${parameterList}) {
+        
+    }
+}`;
+}
+
 function buildEditorTemplate(question, language) {
     if (!question) {
         return "";
@@ -33,6 +66,14 @@ function buildEditorTemplate(question, language) {
 
     if (language === "cpp") {
         return buildCppTemplate(question);
+    }
+
+    if (language === "python") {
+        return buildPythonTemplate(question);
+    }
+
+    if (language === "javascript") {
+        return buildJavascriptTemplate(question);
     }
 
     return "";
