@@ -83,6 +83,165 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function splitTopLevel(text, delimiter = ",") {
+  const parts = [];
+  let current = "";
+  let squareDepth = 0;
+  let angleDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    const previousChar = text[index - 1];
+
+    if (char === "'" && !inDoubleQuote && previousChar !== "\\") {
+      inSingleQuote = !inSingleQuote;
+    } else if (char === '"' && !inSingleQuote && previousChar !== "\\") {
+      inDoubleQuote = !inDoubleQuote;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (char === "[") squareDepth++;
+      if (char === "]") squareDepth--;
+      if (char === "<") angleDepth++;
+      if (char === ">") angleDepth--;
+    }
+
+    if (
+      char === delimiter &&
+      !inSingleQuote &&
+      !inDoubleQuote &&
+      squareDepth === 0 &&
+      angleDepth === 0
+    ) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts;
+}
+
+function parseAssignments(input) {
+  const assignmentMap = {};
+  const parts = splitTopLevel(String(input ?? ""));
+
+  for (const part of parts) {
+    const equalIndex = part.indexOf("=");
+    if (equalIndex === -1) {
+      continue;
+    }
+
+    const name = part.slice(0, equalIndex).trim();
+    const value = part.slice(equalIndex + 1).trim();
+
+    if (name) {
+      assignmentMap[name] = value;
+    }
+  }
+
+  return assignmentMap;
+}
+
+function normalizeType(type) {
+  return String(type ?? "").replace(/\s+/g, "");
+}
+
+function isVectorType(type) {
+  return normalizeType(type).startsWith("vector<") && normalizeType(type).endsWith(">");
+}
+
+function getVectorInnerType(type) {
+  const normalized = normalizeType(type);
+  return normalized.slice("vector<".length, -1);
+}
+
+function parseArrayLiteral(rawValue) {
+  const trimmed = String(rawValue ?? "").trim();
+
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    throw new Error(`Expected an array literal but received "${trimmed}"`);
+  }
+
+  const inner = trimmed.slice(1, -1).trim();
+  if (!inner) {
+    return [];
+  }
+
+  return splitTopLevel(inner);
+}
+
+function stripOuterQuotes(value) {
+  const trimmed = String(value ?? "").trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function serializeParameterInput(type, rawValue) {
+  const normalizedType = normalizeType(type);
+
+  if (isVectorType(normalizedType)) {
+    const values = parseArrayLiteral(rawValue);
+    return `${values.length}\n${values.map((value) => stripOuterQuotes(value)).join(" ")}`;
+  }
+
+  if (normalizedType === "string") {
+    return stripOuterQuotes(rawValue);
+  }
+
+  if (normalizedType === "char") {
+    return stripOuterQuotes(rawValue);
+  }
+
+  if (normalizedType === "bool") {
+    const value = stripOuterQuotes(rawValue).toLowerCase();
+    return value === "true" ? "true" : "false";
+  }
+
+  return String(rawValue ?? "").trim();
+}
+
+function transformTestCaseInput(question, rawInput) {
+  const parameters = Array.isArray(question?.Parameters) ? question.Parameters : [];
+
+  if (!parameters.length) {
+    return String(rawInput ?? "");
+  }
+
+  const assignments = parseAssignments(rawInput);
+
+  return parameters
+    .map((parameter) => {
+      const parameterName = String(parameter?.name ?? "").trim();
+      if (!(parameterName in assignments)) {
+        throw new Error(`Missing input for parameter "${parameterName}"`);
+      }
+
+      return serializeParameterInput(parameter.type, assignments[parameterName]);
+    })
+    .join("\n");
+}
+
+function buildWrappedTestCase(question, testCase) {
+  return {
+    input: transformTestCaseInput(question, testCase.input),
+    expectedOutput: testCase.output ?? testCase.Output,
+  };
+}
+
 async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const statusRes = await fetch(`http://localhost:8000/status/${jobId}`);
@@ -172,8 +331,148 @@ async function runpLocalHostJudge(lang, code, testcases) {
   }
 }
 
-function generateWrappedCode(_lang, userCode) {
-  return userCode;
+function generateCppReadExpression(type) {
+  const normalizedType = normalizeType(type);
+
+  if (isVectorType(normalizedType)) {
+    const innerType = getVectorInnerType(normalizedType);
+    return `readVector<${innerType}>()`;
+  }
+
+  if (normalizedType === "string") {
+    return "readString()";
+  }
+
+  if (normalizedType === "char") {
+    return "readChar()";
+  }
+
+  if (normalizedType === "bool") {
+    return "readBool()";
+  }
+
+  return `readScalar<${type}>()`;
+}
+
+function generateWrappedCode(lang, userCode, question) {
+  if (lang !== "cpp") {
+    return userCode;
+  }
+
+  const functionName = String(question?.Funtion_name ?? "").trim();
+  const className = String(question?.Class_name ?? "Solution").trim() || "Solution";
+  const returnType = String(question?.Return_type ?? "").trim();
+  const parameters = Array.isArray(question?.Parameters) ? question.Parameters : [];
+
+  if (!functionName || !returnType || !parameters.length) {
+    return userCode;
+  }
+
+  const declarations = parameters
+    .map((parameter) => {
+      const type = String(parameter?.type ?? "").trim();
+      const name = String(parameter?.name ?? "").trim();
+      return `    ${type} ${name} = ${generateCppReadExpression(type)};`;
+    })
+    .join("\n");
+
+  const argumentList = parameters
+    .map((parameter) => String(parameter?.name ?? "").trim())
+    .join(", ");
+
+  const invocation =
+    normalizeType(returnType) === "void"
+      ? `    solution.${functionName}(${argumentList});`
+      : [
+          `    auto result = solution.${functionName}(${argumentList});`,
+          "    cout << cubiToString(result);",
+        ].join("\n");
+
+  return `#include <bits/stdc++.h>
+using namespace std;
+
+template <typename T>
+T readScalar() {
+    T value;
+    cin >> value;
+    return value;
+}
+
+string readString() {
+    string value;
+    getline(cin >> ws, value);
+    return value;
+}
+
+char readChar() {
+    char value;
+    cin >> value;
+    return value;
+}
+
+bool readBool() {
+    string value;
+    cin >> value;
+    transform(value.begin(), value.end(), value.begin(), ::tolower);
+    return value == "true" || value == "1";
+}
+
+template <typename T>
+vector<T> readVector() {
+    int size;
+    cin >> size;
+    vector<T> values(size);
+    for (int index = 0; index < size; index++) {
+        cin >> values[index];
+    }
+    return values;
+}
+
+string cubiToString(const string& value) {
+    return value;
+}
+
+string cubiToString(const char* value) {
+    return string(value);
+}
+
+string cubiToString(char value) {
+    return string(1, value);
+}
+
+string cubiToString(bool value) {
+    return value ? "true" : "false";
+}
+
+template <typename T>
+string cubiToString(const vector<T>& values) {
+    string result = "[";
+    for (size_t index = 0; index < values.size(); index++) {
+        if (index > 0) {
+            result += ",";
+        }
+        result += cubiToString(values[index]);
+    }
+    result += "]";
+    return result;
+}
+
+template <typename T>
+string cubiToString(const T& value) {
+    ostringstream output;
+    output << value;
+    return output.str();
+}
+
+${userCode}
+
+int main() {
+    ${className} solution;
+${declarations}
+${invocation}
+    return 0;
+}
+`;
 }
 
 function normalizeOutput(value) {
@@ -208,15 +507,11 @@ route.post("/run_code", async (req, res) => {
     let overallVerdict = "Accepted";
 
 
-    const wrappedcases=[];
-    for (const testCase of testCases) {
-      const element={
-        input:testCase.input,
-        expectedOutput:testCase.Output,
-      }
-      wrappedcases.push(element);
-    }
-    const apiResponse = await runpLocalHostJudge(lang,code,wrappedcases);
+    const wrappedCode = generateWrappedCode(lang, code, question);
+    const wrappedcases = testCases.map((testCase) =>
+      buildWrappedTestCase(question, testCase)
+    );
+    const apiResponse = await runpLocalHostJudge(lang, wrappedCode, wrappedcases);
     if(apiResponse.verdict=='Accepted'){
       return res.status(200).json({
         Verdict:apiResponse.verdict,
@@ -260,19 +555,14 @@ route.post("/submit_soln/:id", async (req, res) => {
       return res.status(404).json({ message: "Question not found" });
     }
 
-    const wrappedCode = generateWrappedCode(lang, code, question);
     const hiddenTests = Array.isArray(question.Hidden_tests)
       ? question.Hidden_tests
       : [];
 
-    const wrappedtests=[];
-    for (const testCase of hiddenTests) {
-      const element={
-        input:testCase.input,
-        expectedOutput:testCase.Output,
-      }
-      wrappedtests.push(element);
-    }
+    const wrappedCode = generateWrappedCode(lang, code, question);
+    const wrappedtests = hiddenTests.map((testCase) =>
+      buildWrappedTestCase(question, testCase)
+    );
 
     const apiresp=await runpLocalHostJudge(lang,wrappedCode,wrappedtests);
 

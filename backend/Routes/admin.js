@@ -5,14 +5,16 @@ const User = require("../schemas/User");
 const Question = require("../schemas/Question");
 const Submission = require("../schemas/Submission");
 
+const protect = require("../middlewares/auth.middleware");
 const isAdmin = require("../middlewares/admin.middleware");
 const backendOnly = require("../middlewares/backendOnly.middleware");
 
 // Apply backend-only middleware to all admin routes
 router.use(backendOnly);//protected from frontedn acess only can be acessed directly via backedn
+router.use(protect);
 router.use(isAdmin);
 
-//create a user....//registering .....user....iss eparat this is for the admin only
+//create a user....//registering .....user....iss eparat this is for the admin only 
 router.post("/CreateUser", async (req, res) => {
     try {
 
@@ -212,5 +214,132 @@ router.get("/stats", async (req, res) => {
         });
     }
 });
+//create questions
+router.post("/Create_question", async (req, res) => {
+  try {
+    const {
+      owner,
+      Title,
+      Description,
+      Difficulty,
+      Funtion_name,
+      Return_type,
+      Class_name,
+      Parameters,
+      Constraints,
+      Input_format,
+      Output_format,
+      Visible_tests,
+      Hidden_tests,
+    } = req.body;
+
+    if (
+      !Title ||
+      !Description ||
+      !Difficulty ||
+      !Funtion_name ||
+      !Return_type ||
+      !Array.isArray(Parameters) ||
+      Parameters.length === 0 ||
+      !Array.isArray(Visible_tests) ||
+      !Array.isArray(Hidden_tests) ||
+      Visible_tests.length === 0 ||
+      Hidden_tests.length === 0
+    ) {
+      return res.status(400).json({
+        error:
+          "Title, Description, Difficulty, Funtion_name, Return_type, Parameters, Visible_tests and Hidden_tests are required",
+      });
+    }
+
+    const normalizedParameters = Parameters.map((parameter, index) => {
+      const name = String(parameter?.name ?? "").trim();
+      const type = String(parameter?.type ?? "").trim();
+
+      if (!name || !type) {
+        throw new Error(`Parameter ${index + 1} must have both name and type`);
+      }
+
+      return { name, type };
+    });
+
+    const normalizeTests = (tests) =>
+      tests.map((test, index) => {
+        const input = String(test?.input ?? "").trim();
+        const output = String(test?.output ?? test?.Output ?? "").trim();
+
+        if (!input || !output) {
+          throw new Error(`Test case ${index + 1} must have both input and output`);
+        }
+
+        return {
+          input,
+          output,
+          Output: output,
+        };
+      });
+
+    const normalizedVisibleTests = normalizeTests(Visible_tests);
+    const normalizedHiddenTests = normalizeTests(Hidden_tests);
+
+    const ownerId = req.user?._id || owner;
+    if (!ownerId) {
+      return res.status(401).json({ error: "Admin user not found for ownership" });
+    }
+
+    const quest = await Question.create({
+      owner: ownerId,
+      Title,
+      Description,
+      Difficulty,
+      Funtion_name,
+      Return_type,
+      Class_name,
+      Parameters: normalizedParameters,
+      Constraints,
+      Input_format,
+      Output_format,
+      Visible_tests: normalizedVisibleTests,
+      Hidden_tests: normalizedHiddenTests,
+    });
+
+    await User.findByIdAndUpdate(ownerId, {
+      $push: {
+        Questions_created: {
+          created: quest._id,
+        },
+      },
+    });
+
+    return res.status(201).json({
+      message: "Question has been created",
+      question: quest,
+    });
+  } catch (err) {
+    const error = "Error Creating Question " + err.message;
+    return res.status(500).json({ error });
+  }
+});
+
+//create Mass Questions
+router.post("/Create_Mass_Questions",async(req,res)=>{
+    try{
+        const Questions=req.body;
+        let num=0;
+        for(const question of Questions){
+            await Question.create(question);
+            num++;
+        }
+        res.status(200).json({response :`sucessfully created ${num} questions....`});
+
+    }
+    catch(err){
+        const error = "Error Creating Questions " + err.message;
+        return res.status(500).json({ error });
+    }
+});
+
+
+
 
 module.exports = router;

@@ -2,7 +2,7 @@ const User = require("../schemas/User");
 
 const isAdmin = async (req, res, next) => {
     try {
-        const adminId = req.headers.userid;
+        const adminId = req.user?._id || req.user?.id || req.headers.userid;
         if (!adminId) {
             return res.status(401).json({
                 message: "Unauthorized"

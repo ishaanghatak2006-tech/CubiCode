@@ -4,6 +4,40 @@ import { AuthContext } from "../context/authContext.jsx";
 import Editor from "@monaco-editor/react";
 import "../styles/Workspace.css";
 
+function buildCppTemplate(question) {
+    const className = question?.Class_name || "Solution";
+    const functionName = question?.Funtion_name || "solve";
+    const returnType = question?.Return_type || "int";
+    const parameters = Array.isArray(question?.Parameters)
+        ? question.Parameters
+        : [];
+
+    const parameterList = parameters.length
+        ? parameters
+            .map((parameter) => `${parameter.type} ${parameter.name}`)
+            .join(", ")
+        : "";
+
+    return `class ${className} {
+public:
+    ${returnType} ${functionName}(${parameterList}) {
+        
+    }
+};`;
+}
+
+function buildEditorTemplate(question, language) {
+    if (!question) {
+        return "";
+    }
+
+    if (language === "cpp") {
+        return buildCppTemplate(question);
+    }
+
+    return "";
+}
+
 function Workspace() {
     const [question, setQuestion] = useState(null);
     const [userid, setUserid] = useState(() => {
@@ -22,6 +56,7 @@ function Workspace() {
     const [code, setCode] = useState("");
     const [runResult, setRunResult] = useState(null);
     const [submitResult, setSubmitResult] = useState(null);
+    const [hasEditedCode, setHasEditedCode] = useState(false);
 
     const { questionId: questionIdParam } = useParams();
     const navigate = useNavigate();
@@ -37,6 +72,7 @@ function Workspace() {
 
             if (response.ok) {
                 setQuestion(data);
+                setHasEditedCode(false);
             } else {
                 alert(data.message);
             }
@@ -60,6 +96,14 @@ function Workspace() {
             fetchQuestion(questionIdParam);
         }
     }, [questionIdParam]);
+
+    useEffect(() => {
+        if (!question || hasEditedCode) {
+            return;
+        }
+
+        setCode(buildEditorTemplate(question, language));
+    }, [question, language, hasEditedCode]);
 
 
     const handleRunCode = async () => {
@@ -85,7 +129,14 @@ function Workspace() {
                 setRunResult(data);
                 setSubmitResult(null);
             } else {
-                alert(data.message);
+                setRunResult({
+                    message: data.message || "Error running code",
+                    error: data.error || null,
+                    details: data.details || null,
+                    stack: data.stack || null,
+                });
+                setSubmitResult(null);
+                alert(data.error || data.message || "Error running code");
             }
         } catch (err) {
             console.log(err);
@@ -116,7 +167,14 @@ function Workspace() {
                 setSubmitResult(data);
                 setRunResult(null);
             } else {
-                alert(data.message);
+                setSubmitResult({
+                    message: data.message || "Error submitting code",
+                    error: data.error || null,
+                    details: data.details || null,
+                    stack: data.stack || null,
+                });
+                setRunResult(null);
+                alert(data.error || data.message || "Error submitting code");
             }
         } catch (err) {
             console.log(err);
@@ -194,7 +252,7 @@ function Workspace() {
 
                                 <p>
                                     <strong>Output:</strong>{" "}
-                                    {test.output}
+                                    {test.output ?? test.Output}
                                 </p>
                             </div>
                         ))}
@@ -212,9 +270,10 @@ function Workspace() {
 
                     <select
                         value={language}
-                        onChange={(e) =>
-                            setLanguage(e.target.value)
-                        }
+                        onChange={(e) => {
+                            setLanguage(e.target.value);
+                            setHasEditedCode(false);
+                        }}
                         className="language-select"
                     >
                         <option value="cpp">
@@ -256,9 +315,10 @@ function Workspace() {
                         height="100%"
                         language={language}
                         value={code}
-                        onChange={(value) =>
-                            setCode(value || "")
-                        }
+                        onChange={(value) => {
+                            setHasEditedCode(true);
+                            setCode(value || "");
+                        }}
                         theme="vs-dark"
                     />
 
