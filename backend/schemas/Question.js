@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Submission=require('./Submission');
 
 const QuestionSchema = new mongoose.Schema({
   owner: {

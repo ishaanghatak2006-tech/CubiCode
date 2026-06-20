@@ -1,8 +1,10 @@
 const mongoose = require("mongoose");
+const Question = require('./Question');
 
 const SubmissionSchema = new mongoose.Schema({
   QuestionId: {
     type: mongoose.Schema.ObjectId,
+    ref: "Question",
     required: true,
   },
   UserId: {
