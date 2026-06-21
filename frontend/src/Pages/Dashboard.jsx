@@ -135,13 +135,6 @@ function Dashboard() {
 
           <div className="profile-info">
             <div className="info-row">
-              <span>User ID</span>
-              <span style={{ fontSize: "11px", wordBreak: "break-all", color: "#8b949e" }}>
-                {user?.id || user?._id || "N/A"}
-              </span>
-            </div>
-
-            <div className="info-row">
               <span>Joined</span>
               <span>
                 {stats?.DateCreated

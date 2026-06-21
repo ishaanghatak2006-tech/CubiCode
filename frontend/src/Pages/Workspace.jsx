@@ -98,6 +98,8 @@ function Workspace() {
     const [runResult, setRunResult] = useState(null);
     const [submitResult, setSubmitResult] = useState(null);
     const [hasEditedCode, setHasEditedCode] = useState(false);
+    const [runLoading, setRunLoading] = useState(false);
+    const [submitLoading, setSubmitLoading] = useState(false);
 
     const { questionId: questionIdParam } = useParams();
     const navigate = useNavigate();
@@ -148,6 +150,9 @@ function Workspace() {
 
 
     const handleRunCode = async () => {
+        setRunLoading(true);
+        setRunResult(null);
+        setSubmitResult(null);
         try {
             const response = await fetch(
                 "http://localhost:5000/submit/run_code",
@@ -182,10 +187,15 @@ function Workspace() {
         } catch (err) {
             console.log(err);
             alert("Server Error");
+        } finally {
+            setRunLoading(false);
         }
     };
 
     const handleSubmit = async () => {
+        setSubmitLoading(true);
+        setSubmitResult(null);
+        setRunResult(null);
         try {
             const response = await fetch(
                 `http://localhost:5000/submit/submit_soln/${questionIdParam}`,
@@ -220,7 +230,19 @@ function Workspace() {
         } catch (err) {
             console.log(err);
             alert("Server Error");
+        } finally {
+            setSubmitLoading(false);
         }
+    };
+
+    const getVerdictClass = (verdict) => {
+        if (!verdict) return "";
+        const v = String(verdict).toLowerCase();
+        if (v === "accepted") return "verdict-accepted";
+        if (v === "wrong answer" || v === "wrong" || v === "rejected") return "verdict-wrong";
+        if (v === "time limit exceeded" || v === "tle") return "verdict-tle";
+        if (v === "runtime error" || v === "error") return "verdict-error";
+        return "verdict-other";
     };
 
     return (
@@ -335,15 +357,17 @@ function Workspace() {
                         <button
                             className="run-btn"
                             onClick={handleRunCode}
+                            disabled={runLoading}
                         >
-                            Run Code
+                            {runLoading ? "Running..." : "Run Code"}
                         </button>
 
                         <button
                             className="submit-btn"
                             onClick={handleSubmit}
+                            disabled={submitLoading}
                         >
-                            Submit
+                            {submitLoading ? "Submitting..." : "Submit"}
                         </button>
 
                     </div>
@@ -371,27 +395,150 @@ function Workspace() {
                         Results
                     </h3>
 
-                    {runResult && (
-                        <div className="result-box">
-                            <pre>
-                                {JSON.stringify(
-                                    runResult,
-                                    null,
-                                    2
+                    {/* RUN RESULT DISPLAY */}
+                    {runResult && !runResult.error && runResult.Verdict && (
+                        <div className="result-content">
+                            <div className={`verdict-banner ${getVerdictClass(runResult.Verdict)}`}>
+                                <span className="verdict-icon">
+                                    {String(runResult.Verdict).toLowerCase() === "accepted" ? "\u2713" : "\u2717"}
+                                </span>
+                                <span className="verdict-text">{runResult.Verdict}</span>
+                            </div>
+
+                            <div className="result-stats">
+                                {runResult.TestsPassed !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Tests Passed</span>
+                                        <span className="stat-value">{runResult.TestsPassed}</span>
+                                    </div>
                                 )}
-                            </pre>
+                                {runResult.TotalTime !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Total Time</span>
+                                        <span className="stat-value">{Number(runResult.TotalTime).toFixed(2)} ms</span>
+                                    </div>
+                                )}
+                                {runResult.PeakMemory !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Peak Memory</span>
+                                        <span className="stat-value">{runResult.PeakMemory} MiB</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {runResult.TestResults && runResult.TestResults.length > 0 && (
+                                <div className="test-results">
+                                    <h4 className="test-results-heading">Test Case Details</h4>
+                                    {runResult.TestResults.map((test, idx) => (
+                                        <div key={idx} className={`test-case ${test.passed ? "test-passed" : "test-failed"}`}>
+                                            <div className="test-header">
+                                                <span className="test-number">Test #{test.testcase}</span>
+                                                <span className={`test-status ${test.passed ? "status-passed" : "status-failed"}`}>
+                                                    {test.passed ? "Passed" : "Failed"}
+                                                </span>
+                                            </div>
+                                            <div className="test-details">
+                                                {test.timeMs !== undefined && (
+                                                    <span className="test-metric">{Number(test.timeMs).toFixed(2)} ms</span>
+                                                )}
+                                                {test.memory && (
+                                                    <span className="test-metric">{test.memory}</span>
+                                                )}
+                                            </div>
+                                            {!test.passed && (
+                                                <div className="test-io">
+                                                    <div className="test-io-item">
+                                                        <span className="io-label">Input:</span>
+                                                        <pre className="io-value">{test.input}</pre>
+                                                    </div>
+                                                    <div className="test-io-item">
+                                                        <span className="io-label">Expected:</span>
+                                                        <pre className="io-value">{test.expected}</pre>
+                                                    </div>
+                                                    <div className="test-io-item">
+                                                        <span className="io-label">Output:</span>
+                                                        <pre className="io-value">{test.output}</pre>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {submitResult && (
-                        <div className="result-box">
-                            <pre>
-                                {JSON.stringify(
-                                    submitResult,
-                                    null,
-                                    2
+                    {runResult && runResult.error && (
+                        <div className="result-content">
+                            <div className="verdict-banner verdict-error">
+                                <span className="verdict-icon">!</span>
+                                <span className="verdict-text">Error</span>
+                            </div>
+                            <div className="result-error-box">
+                                <pre>{runResult.error}</pre>
+                                {runResult.details && <pre className="error-details">{runResult.details}</pre>}
+                            </div>
+                        </div>
+                    )}
+
+                    {runResult && runResult.message && !runResult.Verdict && !runResult.error && (
+                        <div className="result-content">
+                            <div className="result-error-box">
+                                <pre>{runResult.message}</pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SUBMIT RESULT DISPLAY */}
+                    {submitResult && submitResult.submitted && (
+                        <div className="result-content">
+                            <div className={`verdict-banner ${getVerdictClass(submitResult.submitted.Verdict)}`}>
+                                <span className="verdict-icon">
+                                    {String(submitResult.submitted.Verdict).toLowerCase() === "accepted" ? "\u2713" : "\u2717"}
+                                </span>
+                                <span className="verdict-text">{submitResult.submitted.Verdict}</span>
+                            </div>
+
+                            <div className="result-stats">
+                                {submitResult.submitted.Passed !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Tests Passed</span>
+                                        <span className="stat-value">{submitResult.submitted.Passed}</span>
+                                    </div>
                                 )}
-                            </pre>
+                                {submitResult.submitted.Runtime !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Runtime</span>
+                                        <span className="stat-value">{Number(submitResult.submitted.Runtime).toFixed(2)} ms</span>
+                                    </div>
+                                )}
+                                {submitResult.submitted.Memory !== undefined && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Memory</span>
+                                        <span className="stat-value">{submitResult.submitted.Memory} MiB</span>
+                                    </div>
+                                )}
+                                {submitResult.submitted.language && (
+                                    <div className="stat-chip">
+                                        <span className="stat-label">Language</span>
+                                        <span className="stat-value">{submitResult.submitted.language}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {submitResult.submitted.Errors && (
+                                <div className="result-error-box">
+                                    <pre>{submitResult.submitted.Errors}</pre>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {submitResult && submitResult.message && !submitResult.submitted && (
+                        <div className="result-content">
+                            <div className="result-error-box">
+                                <pre>{submitResult.message}</pre>
+                            </div>
                         </div>
                     )}
 

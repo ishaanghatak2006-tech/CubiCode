@@ -208,28 +208,49 @@ function isSupportedScalarType(type) {
   );
 }
 
+
 function validateSupportedType(type) {
   const normalizedType = normalizeType(type);
 
   if (normalizedType.includes("*")) {
-    throw new Error(`Unsupported parameter type "${type}". Pointer types are not supported`);
+    throw new Error(
+      `Unsupported parameter type "${type}". Pointer types are not supported`
+    );
   }
 
-  if (normalizedType.endsWith("&") && !normalizedType.startsWith("const")) {
-    throw new Error(`Unsupported parameter type "${type}". Use plain value types in question parameters`);
+  if (
+    normalizedType.endsWith("&") &&
+    !normalizedType.startsWith("const")
+  ) {
+    throw new Error(
+      `Unsupported parameter type "${type}". Use plain value types in question parameters`
+    );
   }
 
   if (isVectorType(type)) {
     const innerType = getVectorInnerType(type);
-    if (!isSupportedScalarType(innerType)) {
-      throw new Error(`Unsupported parameter type "${type}". Only vector of scalar types is supported`);
+
+    // NEW: allow nested vectors
+    if (
+      !isSupportedScalarType(innerType) &&
+      !isVectorType(innerType)
+    ) {
+      throw new Error(
+        `Unsupported parameter type "${type}". Only vector of scalar types or nested vectors is supported`
+      );
     }
+
+    // recursively validate nested vector
+    if (isVectorType(innerType)) {
+      validateSupportedType(innerType);
+    }
+
     return;
   }
 
   if (!isSupportedScalarType(type)) {
     throw new Error(
-      `Unsupported parameter type "${type}". Supported types are int, long long, double, bool, char, string, and vector<scalar>`
+      `Unsupported parameter type "${type}". Supported types are int, long long, double, bool, char, string, vector<scalar>, and vector<vector<scalar>>`
     );
   }
 }
@@ -261,29 +282,61 @@ function stripOuterQuotes(value) {
 }
 
 function serializeParameterInput(type, rawValue) {
-  validateSupportedType(type);
-  const normalizedType = stripReferenceQualifier(type);
+validateSupportedType(type);
 
-  if (isVectorType(normalizedType)) {
-    const values = parseArrayLiteral(rawValue);
-    return `${values.length}\n${values.map((value) => stripOuterQuotes(value)).join(" ")}`;
-  }
+const normalizedType = stripReferenceQualifier(type);
 
-  if (isStringType(normalizedType)) {
-    return stripOuterQuotes(rawValue);
-  }
+// MATRIX SUPPORT
+if (
+isVectorType(normalizedType) &&
+isVectorType(getVectorInnerType(normalizedType))
+) {
+const rows = parseArrayLiteral(rawValue);
 
-  if (isCharType(normalizedType)) {
-    return stripOuterQuotes(rawValue);
-  }
+const matrix = rows.map((row) => parseArrayLiteral(row));
 
-  if (isBoolType(normalizedType)) {
-    const value = stripOuterQuotes(rawValue).toLowerCase();
-    return value === "true" ? "true" : "false";
-  }
+const rowCount = matrix.length;
+const colCount = rowCount ? matrix[0].length : 0;
 
-  return String(rawValue ?? "").trim();
+const lines = [`${rowCount} ${colCount}`];
+
+for (const row of matrix) {
+  lines.push(
+    row.map((value) => stripOuterQuotes(value)).join(" ")
+  );
 }
+
+return lines.join("\n");
+
+}
+
+// NORMAL VECTOR SUPPORT
+if (isVectorType(normalizedType)) {
+const values = parseArrayLiteral(rawValue);
+
+return `${values.length}\n${values
+  .map((value) => stripOuterQuotes(value))
+  .join(" ")}`;
+
+}
+
+if (isStringType(normalizedType)) {
+return stripOuterQuotes(rawValue);
+}
+
+if (isCharType(normalizedType)) {
+return stripOuterQuotes(rawValue);
+}
+
+if (isBoolType(normalizedType)) {
+const value = stripOuterQuotes(rawValue).toLowerCase();
+return value === "true" ? "true" : "false";
+}
+
+return String(rawValue ?? "").trim();
+}
+
+
 
 function transformTestCaseInput(question, rawInput) {
   const parameters = Array.isArray(question?.Parameters) ? question.Parameters : [];
@@ -404,23 +457,37 @@ async function runpLocalHostJudge(lang, code, testcases) {
 
 function generateCppReadExpression(type) {
   validateSupportedType(type);
+
   const normalizedType = normalizeType(type);
 
+  // MATRIX SUPPORT
+  if (
+  isVectorType(normalizedType) &&
+  isVectorType(getVectorInnerType(normalizedType))
+  ) {
+  const innerVectorType = getVectorInnerType(normalizedType);
+  const baseType = getVectorInnerType(innerVectorType);
+
+  return `readMatrix<${baseType}>()`;
+
+  }
+
+  // NORMAL VECTOR SUPPORT
   if (isVectorType(normalizedType)) {
-    const innerType = getVectorInnerType(normalizedType);
-    return `readVector<${innerType}>()`;
+  const innerType = getVectorInnerType(normalizedType);
+  return `readVector<${innerType}>()`;
   }
 
   if (isStringType(normalizedType)) {
-    return "readString()";
+  return "readString()";
   }
 
   if (isCharType(normalizedType)) {
-    return "readChar()";
+  return "readChar()";
   }
 
   if (isBoolType(normalizedType)) {
-    return "readBool()";
+  return "readBool()";
   }
 
   return `readScalar<${type}>()`;
@@ -451,34 +518,64 @@ function getPythonScalarReader(type) {
 function generatePythonReadExpression(type) {
   validateSupportedType(type);
 
-  if (isVectorType(type)) {
-    return `read_vector(${JSON.stringify(getVectorInnerType(type))})`;
-  }
+  const normalizedType = normalizeType(type);
 
-  return getPythonScalarReader(type);
+  // MATRIX SUPPORT
+  if (
+  isVectorType(normalizedType) &&
+  isVectorType(getVectorInnerType(normalizedType))
+  ) {
+  const innerVectorType = getVectorInnerType(normalizedType);
+  const baseType = getVectorInnerType(innerVectorType);
+
+  return `read_matrix(${JSON.stringify(baseType)})`;
+}
+
+if (isVectorType(type)) {
+return `read_vector(${JSON.stringify(getVectorInnerType(type))})`;
+}
+
+return getPythonScalarReader(type);
 }
 
 function generateJavaScriptReadExpression(type) {
   validateSupportedType(type);
 
+  const normalizedType = normalizeType(type);
+
+  // MATRIX SUPPORT
+  if (
+  isVectorType(normalizedType) &&
+  isVectorType(getVectorInnerType(normalizedType))
+  ) {
+  const innerVectorType = getVectorInnerType(normalizedType);
+  const baseType = getVectorInnerType(innerVectorType);
+
+
+  return `readMatrix(${JSON.stringify(baseType)})`;
+
+
+  }
+
   if (isVectorType(type)) {
-    return `readVector(${JSON.stringify(getVectorInnerType(type))})`;
+  return `readVector(${JSON.stringify(getVectorInnerType(type))})`;
   }
 
   if (isStringType(type)) {
-    return "readString()";
+  return "readString()";
   }
 
   if (isCharType(type)) {
-    return "readChar()";
+  return "readChar()";
   }
 
   if (isBoolType(type)) {
-    return "readBool()";
+  return "readBool()";
   }
 
   return "readNumber()";
 }
+
 
 function generateWrappedCode(lang, userCode, question) {
   const functionName = String(question?.Funtion_name ?? "").trim();
@@ -553,6 +650,25 @@ vector<T> readVector() {
         cin >> values[index];
     }
     return values;
+}
+
+template <typename T>
+vector<vector<T>> readMatrix() {
+    int rows, cols;
+    cin >> rows >> cols;
+
+    vector<vector<T>> matrix(
+        rows,
+        vector<T>(cols)
+    );
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            cin >> matrix[i][j];
+        }
+    }
+
+    return matrix;
 }
 
 string cubiToString(const string& value) {
@@ -669,6 +785,25 @@ def read_vector(inner_type):
     tokens = next_line().strip().split() if size > 0 else []
     return [parse_scalar(inner_type, token) for token in tokens[:size]]
 
+def read_matrix(inner_type):
+    dims = next_line().strip().split()
+    rows = int(dims[0])
+    cols = int(dims[1])
+
+    matrix = []
+
+    for _ in range(rows):
+        tokens = next_line().strip().split()
+
+        row = [
+            parse_scalar(inner_type, token)
+            for token in tokens[:cols]
+        ]
+
+        matrix.append(row)
+
+    return matrix    
+
 def cubi_to_string(value):
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -754,6 +889,31 @@ function readVector(innerType) {
   const tokens = size > 0 ? nextLine().trim().split(/\\s+/) : [];
   return tokens.slice(0, size).map((token) => parseScalar(innerType, token));
 }
+
+function readMatrix(innerType) {
+  const [rows, cols] = nextLine()
+  .trim()
+  .split(/\s+/)
+  .map(Number);
+
+  const matrix = [];
+
+  for (let i = 0; i < rows; i++) {
+  const tokens = nextLine()
+  .trim()
+  .split(/\s+/);
+
+  matrix.push(
+    tokens
+      .slice(0, cols)
+      .map(token => parseScalar(innerType, token))
+  );
+
+  }
+
+  return matrix;
+}
+
 
 function cubiToString(value) {
   if (Array.isArray(value)) {

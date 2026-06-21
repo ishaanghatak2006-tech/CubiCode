@@ -225,6 +225,245 @@
     word-break: break-all;
 }
 
+/* ===========================
+   RESULT CONTENT - Structured Display
+=========================== */
+.result-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Verdict Banner */
+.verdict-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.verdict-icon {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.verdict-text {
+    font-size: 0.95rem;
+}
+
+.verdict-accepted {
+    background: rgba(0, 184, 131, 0.15);
+    color: #00b884;
+    border: 1px solid rgba(0, 184, 131, 0.3);
+}
+
+.verdict-wrong {
+    background: rgba(255, 55, 95, 0.15);
+    color: #ff375f;
+    border: 1px solid rgba(255, 55, 95, 0.3);
+}
+
+.verdict-tle {
+    background: rgba(255, 192, 30, 0.15);
+    color: #ffc01e;
+    border: 1px solid rgba(255, 192, 30, 0.3);
+}
+
+.verdict-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.verdict-other {
+    background: rgba(156, 163, 175, 0.15);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+/* Stats Chips */
+.result-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.stat-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: #161b22;
+    border: 1px solid #2c313c;
+    border-radius: 10px;
+    padding: 10px 16px;
+    min-width: 100px;
+    transition: border-color 0.2s ease;
+}
+
+.stat-chip:hover {
+    border-color: #3d4352;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f3f4f6;
+}
+
+/* Test Results */
+.test-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.test-results-heading {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #8b949e;
+    margin: 4px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.test-case {
+    background: #161b22;
+    border: 1px solid #2c313c;
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color 0.2s ease;
+}
+
+.test-case:hover {
+    border-color: #3d4352;
+}
+
+.test-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.test-number {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #e6edf3;
+}
+
+.test-status {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-passed {
+    background: rgba(0, 184, 131, 0.15);
+    color: #00b884;
+}
+
+.status-failed {
+    background: rgba(255, 55, 95, 0.15);
+    color: #ff375f;
+}
+
+.test-details {
+    display: flex;
+    gap: 14px;
+    font-size: 0.8rem;
+    color: #9ca3af;
+}
+
+.test-metric {
+    font-family: 'JetBrains Mono', Fira Code, monospace;
+    font-size: 0.8rem;
+    color: #8b949e;
+}
+
+.test-io {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid #2c313c;
+}
+
+.test-io-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.io-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #8b949e;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.io-value {
+    font-family: 'JetBrains Mono', Fira Code, monospace;
+    font-size: 0.75rem;
+    color: #c9d1d9;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: #0d0e12;
+    padding: 4px 8px;
+    border-radius: 4px;
+    flex: 1;
+}
+
+/* Error Box */
+.result-error-box {
+    background: #161b22;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', Fira Code, monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: #ef4444;
+    overflow-x: auto;
+}
+
+.result-error-box pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.result-error-box .error-details {
+    margin-top: 8px;
+    color: #f59e0b;
+    padding-top: 8px;
+    border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Disabled button state */
+.run-btn:disabled, .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
 /* Back button from inline styles - overrides */
 .question-panel > button:first-child {
     background: none !important;
