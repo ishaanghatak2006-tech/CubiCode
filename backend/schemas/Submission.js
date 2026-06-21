@@ -46,7 +46,7 @@ const SubmissionSchema = new mongoose.Schema({
     type:String,
     default:"None",
   }
-});
+},{timestamps:true});
 
 module.exports =
   mongoose.models.Submission ||

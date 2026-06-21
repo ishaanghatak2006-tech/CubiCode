@@ -14,6 +14,27 @@ router.use(backendOnly);//protected from frontedn acess only can be acessed dire
 router.use(protect);
 router.use(isAdmin);
 
+
+async function deleteQuestionData(questionId) {
+
+    await Question.findByIdAndDelete(questionId);
+
+    await Submission.deleteMany({
+        QuestionId: questionId
+    });
+
+    await Users.updateMany(
+        {},
+        {
+            $pull: {
+                Questions_solved: {
+                    solved: questionId
+                },
+            }
+        }
+    );
+}
+
 //create a user....//registering .....user....iss eparat this is for the admin only 
 router.post("/CreateUser", async (req, res) => {
     try {
@@ -151,19 +172,8 @@ router.get("/questions", async (req, res) => {
 
 // Delete question
 router.delete("/questions/:id", async (req, res) => {
-
     try {
-
-        const question = await Question.findByIdAndDelete(
-            req.params.id
-        );
-
-        if (!question) {
-            return res.status(404).json({
-                message: "Question not found"
-            });
-        }
-
+        await deleteQuestionData(req.params.id);
         return res.status(200).json({
             message: "Question deleted"
         });
@@ -339,6 +349,29 @@ router.post("/Create_Mass_Questions",async(req,res)=>{
     }
 });
 
+//delete all questions in the list and updatw users data....
+router.delete("/questions", async (req, res) => {
+    try {
+        await Question.deleteMany({});
+        await Submission.deleteMany({});
+
+        await User.updateMany(
+            {},
+            {
+                $set: {
+                    Questions_solved: [],
+                    Questions_created: [],
+                    Solved_questions: 0
+                }
+            }
+        );
+
+    } catch (err) {
+        return res.status(500).json({
+            error: err.message
+        });
+    }
+});
 
 
 

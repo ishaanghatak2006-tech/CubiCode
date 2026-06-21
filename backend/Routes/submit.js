@@ -2,6 +2,7 @@ const express = require("express");
 const route = express.Router();
 const Question = require("../schemas/Question");
 const Submission = require("../schemas/Submission");
+const User=require('../schemas/User');
 const axios = require("axios");
 
 // // Node.js / browser-style example
@@ -885,6 +886,26 @@ route.post("/submit_soln/:id", async (req, res) => {
       Memory: maxMemory,
       Passed: count,
     };
+
+    if(submissionData.Verdict=='Accepted'){
+      //update the number of qustions solved by the user...
+      const questId=submissionData.QuestionId;
+      const userData=await User.findById(submissionData.UserId);
+      const questData=await Question.findById(questId);
+      const alreadySolved=userData.Questions_solved.find(
+          q=>q.solved.toString()===questId.toString()
+      );
+
+      if(!alreadySolved){
+          userData.Solved_questions++;
+          userData.Questions_solved.push({solved:questId});
+          questData.Number_solved++;
+          await userData.save();
+          await questData.save();
+      }    
+    }
+
+
 
     if (errorMessage) {
       submissionData.Errors = errorMessage;

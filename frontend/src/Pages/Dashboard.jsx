@@ -2,10 +2,12 @@ import { useContext, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authContext";
 import "../styles/Dashboard.css";
+import { useLocation } from "react-router-dom";
 
 function Dashboard() {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
@@ -58,7 +60,7 @@ function Dashboard() {
     };
 
     fetchDashboardData();
-  }, [user]);
+  }, [user,location.pathname]);
 
   const handleLogout = async () => {
     try {
