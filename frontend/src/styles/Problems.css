@@ -168,23 +168,22 @@
 /* ===========================
    BACK BUTTON (inline-styled override)
 =========================== */
-.problems-header > button:last-child {
-    padding: 10px 20px !important;
-    background-color: #222733 !important;
-    color: #f3f4f6 !important;
-    border: 1px solid #374151 !important;
-    border-radius: 10px !important;
-    cursor: pointer !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+.dashboard-back-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #8b5cf6, #22c55e);
+    color: #f3f4f6;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.problems-header > button:last-child:hover {
-    background-color: #2d3345 !important;
-    border-color: #4b5563 !important;
+.dashboard-back-btn:hover {
+    background: linear-gradient(135deg, #9f73ff, #32d96a);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 20px rgba(80, 70, 210, 0.35);
 }
 
 /* ===========================

@@ -113,15 +113,15 @@
 }
 
 .auth-card input:focus {
-  border-color: #2f81f7;
-  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.15);
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
   background: #151d2e;
 }
 
 .auth-card button.submit-btn {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #2f81f7, #2563eb);
+  background: linear-gradient(135deg, #8b5cf6, #22c55e);
   color: white;
   border: none;
   border-radius: 12px;
@@ -129,14 +129,14 @@
   font-size: 1rem;
   font-weight: 600;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 14px rgba(47, 129, 247, 0.2);
+  box-shadow: 0 6px 18px rgba(80, 70, 210, 0.28);
   margin-top: 4px;
 }
 
 .auth-card button.submit-btn:hover {
-  background: linear-gradient(135deg, #3b8cff, #2d74e8);
+  background: linear-gradient(135deg, #9f73ff, #32d96a);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(47, 129, 247, 0.35);
+  box-shadow: 0 8px 24px rgba(80, 70, 210, 0.36);
 }
 
 .auth-card button.submit-btn:active {

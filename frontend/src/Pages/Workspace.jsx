@@ -251,20 +251,8 @@ function Workspace() {
             {/* LEFT PANEL */}
             <div className="question-panel">
                 <button
+                    className="workspace-back-btn"
                     onClick={() => navigate("/problems")}
-                    style={{
-                        background: "none",
-                        border: "none",
-                        color: "#2f81f7",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: "600",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        marginBottom: "20px",
-                        padding: "0"
-                    }}
                 >
                     &larr; Back to Problems
                 </button>

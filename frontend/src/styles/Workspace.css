@@ -138,17 +138,18 @@
 }
 
 .run-btn {
-    background-color: #222733;
-    border: 1px solid #374151;
-    color: #c9d1d9;
+    background: linear-gradient(135deg, #7c3aed, #16a34a);
+    border: 1px solid transparent;
+    color: #f3f4f6;
+    box-shadow: 0 4px 12px rgba(80, 70, 210, 0.2);
 }
 
 .run-btn:hover {
-    background-color: #2d3345;
-    border-color: #4b5563;
+    background: linear-gradient(135deg, #8b5cf6, #22c55e);
+    border-color: transparent;
     color: #f3f4f6;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 20px rgba(80, 70, 210, 0.35);
 }
 
 .run-btn:active {
@@ -156,16 +157,16 @@
 }
 
 .submit-btn {
-    background: linear-gradient(135deg, #00b8a3, #009688);
+    background: linear-gradient(135deg, #8b5cf6, #22c55e);
     border: 1px solid transparent;
     color: #f3f4f6;
-    box-shadow: 0 4px 12px rgba(0, 184, 163, 0.15);
+    box-shadow: 0 4px 12px rgba(80, 70, 210, 0.2);
 }
 
 .submit-btn:hover {
-    background: linear-gradient(135deg, #00d4bc, #00a89a);
+    background: linear-gradient(135deg, #9f73ff, #32d96a);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(0, 184, 163, 0.3);
+    box-shadow: 0 8px 20px rgba(80, 70, 210, 0.35);
 }
 
 .submit-btn:active {
@@ -465,10 +466,10 @@
 }
 
 /* Back button from inline styles - overrides */
-.question-panel > button:first-child {
+.workspace-back-btn {
     background: none !important;
     border: none !important;
-    color: #2f81f7 !important;
+    color: #8b5cf6 !important;
     cursor: pointer !important;
     font-size: 0.875rem !important;
     font-weight: 600 !important;
@@ -481,8 +482,8 @@
     width: fit-content !important;
 }
 
-.question-panel > button:first-child:hover {
-    color: #3b8cff !important;
+.workspace-back-btn:hover {
+    color: #9f73ff !important;
     transform: translateX(-3px);
 }
 

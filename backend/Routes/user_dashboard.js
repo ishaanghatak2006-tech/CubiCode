@@ -66,6 +66,29 @@ router.get('/profile/:id',async(req,res)=>{
         return res.status(500).json({error:errMessages});
     }
 });
+
+router.get('/profile-by-username/:username',async(req,res)=>{
+    try{
+        const username=(req.params.username || "").trim();
+        if(!username){
+            return res.status(400).json({message:"invalid username"});
+        }
+        const profile=await Users.findOne({
+            Username: {
+                $regex: new RegExp(`^${username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+            },
+        }).select('-Password');
+        if(!profile){
+            return res.status(404).json({message:"User not found"});
+        }
+        return res.status(200).json(profile);
+    }
+    catch(err){
+        const errMessages="Error fetching profile by username "+err.message;
+        console.log(errMessages);
+        return res.status(500).json({error:errMessages});
+    }
+});
 //update the profile
 router.put('/profile/:id',async(req,res)=>{
     try{

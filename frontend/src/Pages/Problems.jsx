@@ -76,17 +76,8 @@ function Problems() {
                     Problems
                 </h1>
                 <button
+                    className="dashboard-back-btn"
                     onClick={() => navigate("/dashboard")}
-                    style={{
-                        padding: "10px 18px",
-                        backgroundColor: "#222733",
-                        color: "white",
-                        border: "1px solid #374151",
-                        borderRadius: "10px",
-                        cursor: "pointer",
-                        fontWeight: "600",
-                        transition: "0.2s ease"
-                    }}
                 >
                     Back to Dashboard
                 </button>

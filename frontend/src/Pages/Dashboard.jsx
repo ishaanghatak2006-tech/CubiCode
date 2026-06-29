@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authContext";
 import "../styles/Dashboard.css";
 import { useLocation } from "react-router-dom";
+import cubiCodeLogo from "../assets/cubiCode.png";
 
 function Dashboard() {
   const { user, logout } = useContext(AuthContext);
@@ -13,6 +14,11 @@ function Dashboard() {
   const [stats, setStats] = useState(null);
   const [questions, setQuestions] = useState(null);
   const [accepted, setAccepted] = useState(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userSuggestions, setUserSuggestions] = useState([]);
+  const [searchedProfile, setSearchedProfile] = useState(null);
+  const [searchError, setSearchError] = useState("");
+  const [searchingProfile, setSearchingProfile] = useState(false);
 
   const [loading, setLoading] = useState(true);
 
@@ -61,6 +67,78 @@ function Dashboard() {
 
     fetchDashboardData();
   }, [user,location.pathname]);
+
+  useEffect(() => {
+    const loadUserAutocomplete = async () => {
+      try {
+        await fetch("http://localhost:5000/autocomplete/loadUsers");
+      } catch (err) {
+        console.log(err);
+      }
+    };
+
+    loadUserAutocomplete();
+  }, []);
+
+  const fetchUserProfile = async (username) => {
+    if (!username?.trim()) {
+      return;
+    }
+
+    setSearchingProfile(true);
+    setSearchError("");
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/user-dashboard/profile-by-username/${encodeURIComponent(
+          username.trim()
+        )}`
+      );
+      const data = await response.json();
+
+      if (response.ok) {
+        setSearchedProfile(data);
+      } else {
+        setSearchedProfile(null);
+        setSearchError(data.message || data.error || "User not found");
+      }
+    } catch (err) {
+      console.log(err);
+      setSearchedProfile(null);
+      setSearchError("Server Error");
+    } finally {
+      setSearchingProfile(false);
+    }
+  };
+
+  const handleUserSearch = async (value) => {
+    setUserSearch(value);
+    setSearchError("");
+
+    if (!value.trim()) {
+      setUserSuggestions([]);
+      setSearchedProfile(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/autocomplete/findUsername?search=${encodeURIComponent(
+          value
+        )}`
+      );
+      const data = await response.json();
+
+      if (response.ok) {
+        setUserSuggestions(data.recommendations || []);
+      } else {
+        setUserSuggestions([]);
+      }
+    } catch (err) {
+      console.log(err);
+      setUserSuggestions([]);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -155,19 +233,6 @@ function Dashboard() {
 
           <button
             className="logout-btn"
-            style={{
-              width: "100%",
-              padding: "12px",
-              border: "none",
-              borderRadius: "12px",
-              backgroundColor: "#dc3545",
-              color: "white",
-              cursor: "pointer",
-              fontSize: "15px",
-              fontWeight: "600",
-              marginTop: "20px",
-              transition: "0.3s ease"
-            }}
             onClick={handleLogout}
           >
             Logout
@@ -178,6 +243,67 @@ function Dashboard() {
       {/* RIGHT CONTENT */}
 
       <div className="dashboard-right">
+        <div className="user-search-card">
+          <div className="user-search-header">
+            <img
+              src={cubiCodeLogo}
+              alt="CubiCode"
+              className="user-search-logo"
+            />
+            <h2>Search Users</h2>
+          </div>
+
+          <div className="user-search-row">
+            <input
+              type="text"
+              className="user-search-input"
+              placeholder="Search by username..."
+              value={userSearch}
+              onChange={(e) => handleUserSearch(e.target.value)}
+            />
+            <button
+              className="user-search-btn"
+              onClick={() => fetchUserProfile(userSearch)}
+              disabled={!userSearch.trim() || searchingProfile}
+            >
+              {searchingProfile ? "Searching..." : "Search"}
+            </button>
+          </div>
+
+          {userSuggestions.length > 0 && (
+            <div className="user-suggestions">
+              {userSuggestions.slice(0, 6).map((username) => (
+                <button
+                  key={username}
+                  className="user-suggestion-item"
+                  onClick={() => {
+                    setUserSearch(username);
+                    setUserSuggestions([]);
+                    fetchUserProfile(username);
+                  }}
+                >
+                  {username}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {searchError && (
+            <p className="search-error">
+              {searchError}
+            </p>
+          )}
+
+          {searchedProfile && (
+            <div className="searched-profile">
+              <h3>{searchedProfile.Username}</h3>
+              <p>{searchedProfile.Email}</p>
+              <span>
+                Role: {searchedProfile.Role || "User"}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* TOP STATS */}
 
