@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authContext.jsx";
+import { io } from "socket.io-client";
 import Editor from "@monaco-editor/react";
 import "../styles/Workspace.css";
 
@@ -100,10 +101,36 @@ function Workspace() {
     const [hasEditedCode, setHasEditedCode] = useState(false);
     const [runLoading, setRunLoading] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
+    const [socket, setSocket] = useState(null);
 
     const { questionId: questionIdParam } = useParams();
     const navigate = useNavigate();
-    const { user } = useContext(AuthContext);
+    const { user, token } = useContext(AuthContext);
+
+    // Initialize real-time WebSocket connection
+    useEffect(() => {
+        if (!token) return;
+
+        const newSocket = io("http://localhost:5000", {
+            auth: {
+                token: token
+            }
+        });
+
+        newSocket.on("connect", () => {
+            console.log("🔌 Connected to WebSocket server");
+        });
+
+        newSocket.on("connect_error", (err) => {
+            console.error("❌ WebSocket connection error:", err.message);
+        });
+
+        setSocket(newSocket);
+
+        return () => {
+            newSocket.disconnect();
+        };
+    }, [token]);
 
     const fetchQuestion = async (id) => {
         try {
@@ -148,11 +175,16 @@ function Workspace() {
         setCode(buildEditorTemplate(question, language));
     }, [question, language, hasEditedCode]);
 
-
     const handleRunCode = async () => {
+        if (!socket) {
+            alert("Real-time connection is not active. Please refresh.");
+            return;
+        }
+
         setRunLoading(true);
-        setRunResult(null);
+        setRunResult({ Verdict: "Queued" });
         setSubmitResult(null);
+
         try {
             const response = await fetch(
                 "http://localhost:5000/submit/run_code",
@@ -172,30 +204,66 @@ function Workspace() {
             const data = await response.json();
 
             if (response.ok) {
-                setRunResult(data);
-                setSubmitResult(null);
+                const jobId = data.jobId;
+                socket.emit("join_job", jobId);
+
+                // Clean up previous listeners
+                socket.off("status_update");
+                socket.off("result");
+                socket.off("error");
+
+                socket.on("status_update", (update) => {
+                    setRunResult({
+                        Verdict: update.verdict === "queued" ? "Queued" : "Running...",
+                        TestsPassed: update.passedCount,
+                        status: "running"
+                    });
+                });
+
+                socket.on("result", (resultData) => {
+                    setRunResult(resultData);
+                    setRunLoading(false);
+                    socket.off("status_update");
+                    socket.off("result");
+                    socket.off("error");
+                });
+
+                socket.on("error", (errData) => {
+                    setRunResult({
+                        error: errData.message || "Error running code"
+                    });
+                    setRunLoading(false);
+                    socket.off("status_update");
+                    socket.off("result");
+                    socket.off("error");
+                });
+
             } else {
                 setRunResult({
                     message: data.message || "Error running code",
                     error: data.error || null,
-                    details: data.details || null,
-                    stack: data.stack || null,
                 });
                 setSubmitResult(null);
+                setRunLoading(false);
                 alert(data.error || data.message || "Error running code");
             }
         } catch (err) {
             console.log(err);
             alert("Server Error");
-        } finally {
             setRunLoading(false);
         }
     };
 
     const handleSubmit = async () => {
+        if (!socket) {
+            alert("Real-time connection is not active. Please refresh.");
+            return;
+        }
+
         setSubmitLoading(true);
-        setSubmitResult(null);
+        setSubmitResult({ submitted: { Verdict: "Queued" } });
         setRunResult(null);
+
         try {
             const response = await fetch(
                 `http://localhost:5000/submit/submit_soln/${questionIdParam}`,
@@ -215,22 +283,52 @@ function Workspace() {
             const data = await response.json();
 
             if (response.ok) {
-                setSubmitResult(data);
-                setRunResult(null);
+                const jobId = data.jobId;
+                socket.emit("join_job", jobId);
+
+                // Clean up previous listeners
+                socket.off("status_update");
+                socket.off("result");
+                socket.off("error");
+
+                socket.on("status_update", (update) => {
+                    setSubmitResult({
+                        submitted: {
+                            Verdict: update.verdict === "queued" ? "Queued" : "Running...",
+                            Passed: update.passedCount
+                        }
+                    });
+                });
+
+                socket.on("result", (resultData) => {
+                    setSubmitResult(resultData);
+                    setSubmitLoading(false);
+                    socket.off("status_update");
+                    socket.off("result");
+                    socket.off("error");
+                });
+
+                socket.on("error", (errData) => {
+                    setSubmitResult({
+                        message: errData.message || "Error submitting solution",
+                    });
+                    setSubmitLoading(false);
+                    socket.off("status_update");
+                    socket.off("result");
+                    socket.off("error");
+                });
+
             } else {
                 setSubmitResult({
                     message: data.message || "Error submitting code",
                     error: data.error || null,
-                    details: data.details || null,
-                    stack: data.stack || null,
                 });
-                setRunResult(null);
+                setSubmitLoading(false);
                 alert(data.error || data.message || "Error submitting code");
             }
         } catch (err) {
             console.log(err);
             alert("Server Error");
-        } finally {
             setSubmitLoading(false);
         }
     };
@@ -242,6 +340,7 @@ function Workspace() {
         if (v === "wrong answer" || v === "wrong" || v === "rejected") return "verdict-wrong";
         if (v === "time limit exceeded" || v === "tle") return "verdict-tle";
         if (v === "runtime error" || v === "error") return "verdict-error";
+        if (v === "queued" || v === "running...") return "verdict-running-state";
         return "verdict-other";
     };
 

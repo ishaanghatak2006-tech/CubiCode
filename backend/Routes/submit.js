@@ -366,7 +366,7 @@ function buildWrappedTestCase(question, testCase) {
   };
 }
 
-async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
+async function waitForJudgeStatus(io, jobId, maxAttempts = 200, delayMs = 150) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const statusRes = await fetch(`http://localhost:8000/status/${jobId}`);
     console.log("🔵 Status attempt", attempt, "for jobId:", jobId, "Response status:", statusRes.status);
@@ -375,12 +375,11 @@ async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
       const errorBody = await statusRes.text();
       console.error("❌ Status response not OK:", { status: statusRes.status, body: errorBody });
       
-      // If 404, check if the error body contains verdict info
       if (statusRes.status === 404) {
         try {
           const errorData = JSON.parse(errorBody);
           if (errorData.message && errorData.message.includes("still queued")) {
-            // Job still queued, continue polling
+            io.to(`job_${jobId}`).emit("status_update", { verdict: "queued" });
             if (attempt === maxAttempts) {
               return {
                 verdict: 'Timeout',
@@ -391,7 +390,7 @@ async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
             continue;
           }
         } catch (e) {
-          // Couldn't parse error body, throw original error
+          // Ignore parse errors, throw below
         }
       }
       
@@ -403,6 +402,11 @@ async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
     const verdict = String(statusData?.verdict ?? "").toLowerCase();
 
     if (!verdict || ['queued', 'pending', 'running', 'in progress'].includes(verdict)) {
+      io.to(`job_${jobId}`).emit("status_update", { 
+        verdict: verdict || "running", 
+        passedCount: statusData?.passedCount || 0 
+      });
+
       if (attempt === maxAttempts) {
         return {
           ...statusData,
@@ -418,41 +422,32 @@ async function waitForJudgeStatus(jobId, maxAttempts = 120, delayMs = 2000) {
   }
 }
 
-async function runpLocalHostJudge(lang, code, testcases) {
-  try {
-    console.log("🔵 Calling LocalHostJudge API:", { lang, testcasesCount: Array.isArray(testcases) ? testcases.length : 0 });
+async function submitToLocalHostJudge(lang, code, testcases) {
+  console.log("🔵 Calling LocalHostJudge API:", { lang, testcasesCount: Array.isArray(testcases) ? testcases.length : 0 });
 
-    const submitResp = await fetch("http://localhost:8000/judge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        language: lang,
-        code: code,
-        testcases: testcases,
-      }),
-    });
+  const submitResp = await fetch("http://localhost:8000/judge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      language: lang,
+      code: code,
+      testcases: testcases,
+    }),
+  });
 
-    if (!submitResp.ok) {
-      throw new Error(`Judge submit request failed: ${submitResp.status}`);
-    }
-
-    const submitData = await submitResp.json();
-    console.log("🔵 Judge submit response:", JSON.stringify(submitData, null, 2));
-    const jobId = submitData?.jobId;
-    console.log("🔵 Extracted jobId:", jobId);
-    console.log("🔵 Full submit response keys:", Object.keys(submitData));
-    if (!jobId) {
-      throw new Error("Judge response did not include jobId");
-    }
-
-    return await waitForJudgeStatus(jobId);
-  } catch (err) {
-    console.error("❌ API error:", {
-      message: err.message,
-      stack: err.stack,
-    });
-    throw err;
+  if (!submitResp.ok) {
+    throw new Error(`Judge submit request failed: ${submitResp.status}`);
   }
+
+  const submitData = await submitResp.json();
+  console.log("🔵 Judge submit response:", JSON.stringify(submitData, null, 2));
+  const jobId = submitData?.jobId;
+  console.log("🔵 Extracted jobId:", jobId);
+  if (!jobId) {
+    throw new Error("Judge response did not include jobId");
+  }
+
+  return jobId;
 }
 
 function generateCppReadExpression(type) {
@@ -964,38 +959,55 @@ route.post("/run_code", async (req, res) => {
         .json({ message: "No visible test cases found for this question" });
     }
 
-    const runResults = [];
-    let overallVerdict = "Accepted";
-
-
     const wrappedCode = generateWrappedCode(lang, code, question);
     const wrappedcases = testCases.map((testCase) =>
       buildWrappedTestCase(question, testCase)
     );
-    const apiResponse = await runpLocalHostJudge(lang, wrappedCode, wrappedcases);
-    if(apiResponse.verdict=='Accepted'){
-      return res.status(200).json({
-        Verdict:apiResponse.verdict,
-        TestsPassed:apiResponse.passedCount,
-        TestResults:apiResponse.testResults,
-        TotalTime:apiResponse.TotTime,
-        PeakMemory:apiResponse.peakMemory
-      });
-    }
-    else{
-      return res.status(200).json({
-          Verdict:apiResponse.verdict,
-          TestsPassed:apiResponse.passedCount,
-          TestResults:apiResponse.testResults,
-          Error:apiResponse.error,
-      });
-    }
+
+    // Submit and get jobId immediately
+    const jobId = await submitToLocalHostJudge(lang, wrappedCode, wrappedcases);
+
+    // Return immediately to frontend
+    res.status(202).json({
+      message: "Code submission queued",
+      jobId
+    });
+
+    // Run polling and event emission asynchronously
+    const io = req.app.get("io");
+    (async () => {
+      try {
+        const apiResponse = await waitForJudgeStatus(io, jobId);
+        if (apiResponse.verdict === 'Accepted') {
+          io.to(`job_${jobId}`).emit("result", {
+            Verdict: apiResponse.verdict,
+            TestsPassed: apiResponse.passedCount,
+            TestResults: apiResponse.testResults,
+            TotalTime: apiResponse.TotTime,
+            PeakMemory: apiResponse.peakMemory
+          });
+        } else {
+          io.to(`job_${jobId}`).emit("result", {
+            Verdict: apiResponse.verdict,
+            TestsPassed: apiResponse.passedCount,
+            TestResults: apiResponse.testResults,
+            Error: apiResponse.error || null,
+          });
+        }
+      } catch (err) {
+        console.error(`❌ Async code evaluation error for job ${jobId}:`, err);
+        io.to(`job_${jobId}`).emit("error", {
+          message: "Error running code during verification",
+          error: err.message
+        });
+      }
+    })();
+
   } catch (err) {
-    console.error("❌ /run_code error:", err.message, err.response?.data);
+    console.error("❌ /run_code error:", err.message);
     return res.status(500).json({ 
-      message: "Error running code", 
-      error: err.message,
-      details: err.response?.data 
+      message: "Error initiating code run", 
+      error: err.message
     });
   }
 });
@@ -1025,65 +1037,87 @@ route.post("/submit_soln/:id", async (req, res) => {
       buildWrappedTestCase(question, testCase)
     );
 
-    const apiresp=await runpLocalHostJudge(lang,wrappedCode,wrappedtests);
+    // Submit and get jobId immediately
+    const jobId = await submitToLocalHostJudge(lang, wrappedCode, wrappedtests);
 
-    const Verdict = apiresp.verdict;
-    const maxruntime = apiresp.TotTime;
-    const maxMemory = apiresp.peakMemory;
-    const count = apiresp.passedCount;
-    let errorMessage = null;
-    if (Verdict !== 'Accepted') {
-      errorMessage = apiresp.error;
-    }
-
-    const submissionData = {
-      QuestionId: quest_id,
-      UserId: userid,
-      language: lang,
-      Code: code,
-      Verdict,
-      Runtime: maxruntime,
-      Memory: maxMemory,
-      Passed: count,
-    };
-
-    if(submissionData.Verdict=='Accepted'){
-      //update the number of qustions solved by the user...
-      const questId=submissionData.QuestionId;
-      const userData=await User.findById(submissionData.UserId);
-      const questData=await Question.findById(questId);
-      const alreadySolved=userData.Questions_solved.find(
-          q=>q.solved.toString()===questId.toString()
-      );
-
-      if(!alreadySolved){
-          userData.Solved_questions++;
-          userData.Questions_solved.push({solved:questId});
-          questData.Number_solved++;
-          await userData.save();
-          await questData.save();
-      }    
-    }
-
-
-
-    if (errorMessage) {
-      submissionData.Errors = errorMessage;
-    }
-
-    const user_sub = new Submission(submissionData);
-
-    await user_sub.save();
-    return res.status(200).json({
-      message: "solution judged successfully",
-      submitted: user_sub,
+    // Return immediately to frontend
+    res.status(202).json({
+      message: "Submission queued",
+      jobId
     });
+
+    // Run polling, DB storage and emission asynchronously
+    const io = req.app.get("io");
+    (async () => {
+      try {
+        const apiresp = await waitForJudgeStatus(io, jobId);
+
+        const Verdict = apiresp.verdict;
+        const maxruntime = apiresp.TotTime;
+        const maxMemory = apiresp.peakMemory;
+        const count = apiresp.passedCount;
+        let errorMessage = null;
+        if (Verdict !== 'Accepted') {
+          errorMessage = apiresp.error;
+        }
+
+        const submissionData = {
+          QuestionId: quest_id,
+          UserId: userid,
+          language: lang,
+          Code: code,
+          Verdict,
+          Runtime: maxruntime,
+          Memory: maxMemory,
+          Passed: count,
+        };
+
+        if (submissionData.Verdict === 'Accepted') {
+          // update the number of questions solved by the user...
+          const questId = submissionData.QuestionId;
+          const userData = await User.findById(submissionData.UserId);
+          const questData = await Question.findById(questId);
+          if (userData && questData) {
+            const alreadySolved = userData.Questions_solved.find(
+              q => q.solved.toString() === questId.toString()
+            );
+
+            if (!alreadySolved) {
+              userData.Solved_questions++;
+              userData.Questions_solved.push({ solved: questId });
+              questData.Number_solved++;
+              await userData.save();
+              await questData.save();
+            }
+          }
+        }
+
+        if (errorMessage) {
+          submissionData.Errors = errorMessage;
+        }
+
+        const user_sub = new Submission(submissionData);
+        await user_sub.save();
+
+        io.to(`job_${jobId}`).emit("result", {
+          message: "solution judged successfully",
+          submitted: user_sub,
+        });
+
+      } catch (err) {
+        console.error(`❌ Async submission evaluation error for job ${jobId}:`, err);
+        io.to(`job_${jobId}`).emit("error", {
+          message: "Error processing submission",
+          error: err.message
+        });
+      }
+    })();
+
   } catch (err) {
     console.error("❌ /submit_soln error:", err);
     return res.status(500).json({
       message: "can't submit solution, please try again!",
       error: err.message,
-      stack: err.stack,
     });
   }
 });

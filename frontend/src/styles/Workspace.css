@@ -285,6 +285,24 @@
     border: 1px solid rgba(156, 163, 175, 0.3);
 }
 
+.verdict-running-state {
+    background: rgba(124, 58, 237, 0.15);
+    color: #a78bfa;
+    border: 1px solid rgba(124, 58, 237, 0.3);
+    animation: pulse-glow 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 4px rgba(124, 58, 237, 0.1);
+        border-color: rgba(124, 58, 237, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(124, 58, 237, 0.3);
+        border-color: rgba(124, 58, 237, 0.6);
+    }
+}
+
 /* Stats Chips */
 .result-stats {
     display: flex;
